@@ -21,14 +21,31 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
-  fromLat: z.coerce.number().min(-90).max(90, { message: "Latitude must be between -90 and 90" }),
-  fromLon: z.coerce.number().min(-180).max(180, { message: "Longitude must be between -180 and 180" }),
-  toLat: z.coerce.number().min(-90).max(90, { message: "Latitude must be between -90 and 90" }),
-  toLon: z.coerce.number().min(-180).max(180, { message: "Longitude must be between -180 and 180" }),
+  fromCity: z.string().min(2, { message: "Starting city is required" }),
+  toCity: z.string().min(2, { message: "Destination city is required" }),
   time: z.string().min(1, { message: "Time is required" }),
 });
 
 type FormValues = z.infer<typeof formSchema>;
+
+/**
+ * Resolves a city name to its latitude and longitude using Nominatim API.
+ */
+async function getCoordinates(placeName: string) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(placeName)}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.length > 0) {
+      return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+    }
+    return null;
+  } catch (error) {
+    console.error("Geocoding error:", error);
+    return null;
+  }
+}
 
 export function SeatRecommendation() {
   const [loading, setLoading] = useState(false);
@@ -38,10 +55,8 @@ export function SeatRecommendation() {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      fromLat: 0,
-      fromLon: 0,
-      toLat: 0,
-      toLon: 0,
+      fromCity: "",
+      toCity: "",
       time: "",
     },
   });
@@ -50,13 +65,31 @@ export function SeatRecommendation() {
     setLoading(true);
     setRecommendation(null);
     try {
-      // Backend integration as requested: native Fetch to http://localhost:3000/recommend-seat
+      // 1. Resolve 'From City' to coordinates
+      const fromCoords = await getCoordinates(values.fromCity);
+      if (!fromCoords) {
+        throw new Error(`Could not find coordinates for "${values.fromCity}"`);
+      }
+
+      // 2. Resolve 'To City' to coordinates
+      const toCoords = await getCoordinates(values.toCity);
+      if (!toCoords) {
+        throw new Error(`Could not find coordinates for "${values.toCity}"`);
+      }
+
+      // 3. Backend integration: pass resolved coordinates and time
       const response = await fetch("http://localhost:3000/recommend-seat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          fromLat: fromCoords.lat,
+          fromLon: fromCoords.lon,
+          toLat: toCoords.lat,
+          toLon: toCoords.lon,
+          time: values.time,
+        }),
       });
 
       if (!response.ok) {
@@ -78,7 +111,7 @@ export function SeatRecommendation() {
         description: error instanceof Error ? error.message : "Connection failed to the backend API.",
       });
       // Mock for demonstration if the local backend is missing
-      setRecommendation("Backend at localhost:3000 was unreachable. Example result: 'Sit on the left side to avoid direct sunlight during this morning journey.'");
+      setRecommendation("Backend at localhost:3000 was unreachable. Example result: 'Since you are traveling south in the morning, sit on the right side to avoid direct sunlight.'");
     } finally {
       setLoading(false);
     }
@@ -103,29 +136,16 @@ export function SeatRecommendation() {
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-accent font-semibold mb-2">
                     <MapPin className="w-4 h-4" />
-                    <span>Departure Point</span>
+                    <span>Departure City</span>
                   </div>
                   <FormField
                     control={form.control}
-                    name="fromLat"
+                    name="fromCity"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Latitude</FormLabel>
+                        <FormLabel>Starting Point</FormLabel>
                         <FormControl>
-                          <Input placeholder="0.0000" type="number" step="any" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="fromLon"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Longitude</FormLabel>
-                        <FormControl>
-                          <Input placeholder="0.0000" type="number" step="any" {...field} />
+                          <Input placeholder="e.g. London" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -136,29 +156,16 @@ export function SeatRecommendation() {
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-accent font-semibold mb-2">
                     <MapPin className="w-4 h-4" />
-                    <span>Destination</span>
+                    <span>Destination City</span>
                   </div>
                   <FormField
                     control={form.control}
-                    name="toLat"
+                    name="toCity"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Latitude</FormLabel>
+                        <FormLabel>Ending Point</FormLabel>
                         <FormControl>
-                          <Input placeholder="0.0000" type="number" step="any" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="toLon"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Longitude</FormLabel>
-                        <FormControl>
-                          <Input placeholder="0.0000" type="number" step="any" {...field} />
+                          <Input placeholder="e.g. Paris" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
