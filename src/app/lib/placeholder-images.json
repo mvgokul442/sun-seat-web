@@ -1,0 +1,11 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "hero-sun",
+      "description": "A beautiful sunset over a travel route",
+      "imageUrl": "https://picsum.photos/seed/sunseat/1200/600",
+      "imageHint": "sunset travel"
+    }
+  ]
+}
